@@ -57,6 +57,7 @@ let engineOk=false;
 let engineBusy=false;
 let engineSeq=0;
 let engineEnabled=false;
+let engineReadyPoll=null;
 
 function setReplayUI(on){
   boardEl.classList.toggle("replayMode", !!on);
@@ -87,6 +88,14 @@ function coordToIdx(coord){
 }
 function normalizeDash(s){
  return String(s||"").replace(/[–—]/g,"-");
+}
+function setClockToggleLabel(){
+  const btn=document.getElementById("clockToggle");
+  if(btn) btn.textContent=running ? "Uhr stoppen" : "Uhr starten";
+}
+function syncTurnAndMoveFromReplayPly(ply){
+  active=(ply%2===0) ? "w" : "b";
+  fullMove=Math.floor(ply/2)+1;
 }
 
 // Stellung -> FEN (minimal, ausreichend für Bewertung)
@@ -156,15 +165,15 @@ function evalCurrentPosition(){
   if(!engine || !engineOk) return;
   if(engineBusy) return; // simple throttle
 
-  const ply = replay ? replay.ply : null;
   const stm = replay ? ((replay.ply%2===0)?"w":"b") : active;
-  const fen = stateToFEN(state, stm, replay?replay.ply: (fullMove-1)*2 );
+  const fen = stateToFEN(state, stm, replay ? replay.ply : (fullMove-1)*2);
   const mySeq=++engineSeq;
   engineBusy=true;
   setEngineStatus("rechnet…");
   engScore.textContent="…";
 
   let last=null;
+  const baseOnMsg=engine.onmessage;
   const handler=(e)=>{
     const line=String(e.data||"");
     const mMate=line.match(/score mate (-?\d+)/);
@@ -173,7 +182,6 @@ function evalCurrentPosition(){
     else if(mCp) last={type:"cp", value:parseInt(mCp[1],10)};
 
     if(line.startsWith("bestmove")){
-      // restore base handler (UCI handshake)
       engine.onmessage=baseOnMsg;
       if(mySeq===engineSeq){
         engScore.textContent=fmtScore(last);
@@ -183,8 +191,6 @@ function evalCurrentPosition(){
     }
   };
 
-  // Add temporary listener without breaking handshake listener
-  const baseOnMsg = engine.onmessage;
   engine.onmessage=(e)=>{ baseOnMsg && baseOnMsg(e); handler(e); };
 
   engine.postMessage("ucinewgame");
@@ -208,13 +214,30 @@ function renderClock(){
  bTimeEl.textContent=fmt(blackMs);
  turnEl.textContent=active==="w"?"Weiß":"Schwarz";
  moveNoEl.textContent=fullMove;
+ setClockToggleLabel();
 }
 function tick(){
  if(!running)return;
  const now=Date.now();
  const dt=now-lastTick;
  lastTick=now;
- if(active==="w")whiteMs-=dt; else blackMs-=dt;
+
+ if(active==="w"){
+   whiteMs-=dt;
+   if(whiteMs<=0){
+     whiteMs=0;
+     stopClock();
+     statusEl.textContent="Zeit abgelaufen: Weiß verliert auf Zeit";
+   }
+ }else{
+   blackMs-=dt;
+   if(blackMs<=0){
+     blackMs=0;
+     stopClock();
+     statusEl.textContent="Zeit abgelaufen: Schwarz verliert auf Zeit";
+   }
+ }
+
  renderClock();
 }
 function startClock(){
@@ -222,12 +245,14 @@ function startClock(){
  running=true;
  lastTick=Date.now();
  timer=setInterval(tick,250);
+ renderClock();
 }
 function stopClock(){
  running=false;
  clearInterval(timer);
  timer=null;
  lastTick=null;
+ renderClock();
 }
 function resetClock(){
  stopClock();
@@ -272,6 +297,7 @@ function isLegal(from,to){
   case"Q":return((adr===adc)||dr===0||dc===0)&&clear(Math.sign(dr),Math.sign(dc));
   case"K":return Math.max(adr,adc)===1;
  }
+ return false;
 }
 
 /* ===== SAN ===== */
@@ -497,6 +523,7 @@ function applyCoordMove(baseState, coord){
   const from=coordToIdx(parts[0].trim());
   const to=coordToIdx(parts[1].trim());
   if(from==null||to==null) return null;
+  if(!baseState[from]) return null; // Fix: ungültiger Quellzug
   const ns=baseState.slice();
   ns[to]=ns[from];
   ns[from]=null;
@@ -540,13 +567,14 @@ function enterReplay(pgnText){
   state=states[0].slice();
   selected=null; legal.clear();
   replayHighlight=null;
+  syncTurnAndMoveFromReplayPly(0);
 
-  // Disable edit controls that cause side effects (optional)
   statusEl.textContent="Replay aktiv: 0 / "+meta.length;
-    setReplayUI(true);
-setReplayButtonsEnabled(true);
+  setReplayUI(true);
+  setReplayButtonsEnabled(true);
   renderMoves();
   renderReplayPos();
+  renderClock();
   render();
   evalCurrentPosition();
 }
@@ -555,10 +583,12 @@ function exitReplay(){
   replay=null;
   replayHighlight=null;
   statusEl.textContent="Feld: –";
-    setReplayUI(false);
-setReplayButtonsEnabled(false);
+  setReplayUI(false);
+  setReplayButtonsEnabled(false);
   renderReplayPos();
+  renderClock();
   render();
+  evalCurrentPosition();
 }
 function setReplayButtonsEnabled(on){
   rFirst.disabled=!on;
@@ -581,6 +611,8 @@ function gotoPly(p){
   replay.ply=ply;
   state=replay.states[ply].slice();
   selected=null; legal.clear();
+  syncTurnAndMoveFromReplayPly(ply);
+
   if(ply===0){
     replayHighlight=null;
   }else{
@@ -590,6 +622,7 @@ function gotoPly(p){
   statusEl.textContent=`Replay aktiv: ${ply} / ${max}`;
   renderMoves();
   renderReplayPos();
+  renderClock();
   render();
   evalCurrentPosition();
 }
@@ -623,14 +656,21 @@ document.getElementById("reset").onclick=()=>{
  state=start.slice(); moves=[]; history=[];
  resetClock(); selected=null; legal.clear();
  renderMoves(); render(); undoBtn.disabled=true;
+ evalCurrentPosition();
 };
 document.getElementById("clear").onclick=()=>{
  if(replay) exitReplay();
  state=Array(64).fill(null); moves=[]; history=[];
  resetClock(); selected=null; legal.clear();
  renderMoves(); render(); undoBtn.disabled=true;
+ evalCurrentPosition();
 };
-document.getElementById("clearmoves").onclick=()=>{ if(replay) exitReplay(); moves=[]; renderMoves(); };
+document.getElementById("clearmoves").onclick=()=>{
+ if(replay) exitReplay();
+ moves=[];
+ renderMoves();
+ evalCurrentPosition();
+};
 document.getElementById("undo").onclick=()=>{
  if(replay) return;
  if(!history.length)return;
@@ -640,6 +680,7 @@ document.getElementById("undo").onclick=()=>{
  active=h.active; fullMove=h.fullMove;
  renderMoves(); renderClock(); render();
  undoBtn.disabled=!history.length;
+ evalCurrentPosition();
 };
 document.getElementById("clockToggle").onclick=()=>running?stopClock():startClock();
 document.getElementById("clockReset").onclick=resetClock;
@@ -660,7 +701,6 @@ rAuto.onclick=()=>toggleReplayAuto();
 
 engToggle.onclick=()=>{
   if(!engineEnabled){
-    // enable
     if(!ensureEngine()){
       engineEnabled=false;
       engToggle.textContent="Engine: AUS";
@@ -669,15 +709,29 @@ engToggle.onclick=()=>{
     }
     engineEnabled=true;
     engToggle.textContent="Engine: AN";
-    // may take a moment until readyok
-    const t=setInterval(()=>{
-      if(engineOk){ clearInterval(t); evalCurrentPosition(); }
+
+    if(engineReadyPoll) clearInterval(engineReadyPoll);
+    let tries=0;
+    engineReadyPoll=setInterval(()=>{
+      tries++;
+      if(engineOk){
+        clearInterval(engineReadyPoll);
+        engineReadyPoll=null;
+        evalCurrentPosition();
+      }else if(tries>40){
+        clearInterval(engineReadyPoll);
+        engineReadyPoll=null;
+        setEngineStatus("Engine nicht bereit");
+      }
     }, 150);
   }else{
-    // disable
     engineEnabled=false;
     engToggle.textContent="Engine: AUS";
     engScore.textContent="–";
+    if(engineReadyPoll){
+      clearInterval(engineReadyPoll);
+      engineReadyPoll=null;
+    }
     setEngineStatus(engineOk?"bereit":"kein Stockfish.js");
   }
 };
