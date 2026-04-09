@@ -8,6 +8,7 @@ const wTimeEl=document.getElementById("wtime");
 const bTimeEl=document.getElementById("btime");
 const turnEl=document.getElementById("turn");
 const moveNoEl=document.getElementById("moveno");
+const clockToggleBtn=document.getElementById("clockToggle");
 
 const pgnFile=document.getElementById("pgnfile");
 const rFirst=document.getElementById("rFirst");
@@ -58,6 +59,8 @@ let engineBusy=false;
 let engineSeq=0;
 let engineEnabled=false;
 let engineReadyPoll=null;
+let enginePendingEval=false;
+let engineSearch=null;
 
 function setReplayUI(on){
   boardEl.classList.toggle("replayMode", !!on);
@@ -90,8 +93,7 @@ function normalizeDash(s){
  return String(s||"").replace(/[–—]/g,"-");
 }
 function setClockToggleLabel(){
-  const btn=document.getElementById("clockToggle");
-  if(btn) btn.textContent=running ? "Uhr stoppen" : "Uhr starten";
+  if(clockToggleBtn) clockToggleBtn.textContent=running ? "Uhr stoppen" : "Uhr starten";
 }
 function syncTurnAndMoveFromReplayPly(ply){
   active=(ply%2===0) ? "w" : "b";
@@ -143,9 +145,12 @@ function ensureEngine(){
     return false;
   }
   engineOk=false;
+  engineBusy=false;
+  enginePendingEval=false;
+  engineSearch=null;
   setEngineStatus("initialisiere…");
 
-  // einfache UCI-Handshake
+  // einfache UCI-Handshake + Suchergebnisse
   engine.onmessage=(e)=>{
     const line=String(e.data||"");
     if(line.includes("uciok")){
@@ -155,6 +160,36 @@ function ensureEngine(){
       engineOk=true;
       setEngineStatus("bereit");
     }
+    if(engineSearch){
+      const mMate=line.match(/score mate (-?\d+)/);
+      const mCp=line.match(/score cp (-?\d+)/);
+      if(mMate) engineSearch.last={type:"mate", value:parseInt(mMate[1],10)};
+      else if(mCp) engineSearch.last={type:"cp", value:parseInt(mCp[1],10)};
+
+      if(line.startsWith("bestmove")){
+        const finishedSearch=engineSearch;
+        engineSearch=null;
+        engineBusy=false;
+        if(engineEnabled && finishedSearch.seq===engineSeq){
+          engScore.textContent=fmtScore(finishedSearch.last);
+          setEngineStatus("bereit");
+        }
+        if(enginePendingEval && engineEnabled){
+          enginePendingEval=false;
+          setTimeout(evalCurrentPosition, 0);
+        }
+      }
+    }
+  };
+  engine.onerror=()=>{
+    engineBusy=false;
+    engineOk=false;
+    enginePendingEval=false;
+    engineSearch=null;
+    engineEnabled=false;
+    engToggle.textContent="Engine: AUS";
+    engScore.textContent="–";
+    setEngineStatus("Engine-Fehler");
   };
   engine.postMessage("uci");
   return true;
@@ -163,35 +198,19 @@ function ensureEngine(){
 function evalCurrentPosition(){
   if(!engineEnabled) return;
   if(!engine || !engineOk) return;
-  if(engineBusy) return; // simple throttle
+  if(engineBusy){
+    enginePendingEval=true;
+    return;
+  }
 
   const stm = replay ? ((replay.ply%2===0)?"w":"b") : active;
   const fen = stateToFEN(state, stm, replay ? replay.ply : (fullMove-1)*2);
   const mySeq=++engineSeq;
   engineBusy=true;
+  enginePendingEval=false;
+  engineSearch={seq: mySeq, last: null};
   setEngineStatus("rechnet…");
   engScore.textContent="…";
-
-  let last=null;
-  const baseOnMsg=engine.onmessage;
-  const handler=(e)=>{
-    const line=String(e.data||"");
-    const mMate=line.match(/score mate (-?\d+)/);
-    const mCp=line.match(/score cp (-?\d+)/);
-    if(mMate) last={type:"mate", value:parseInt(mMate[1],10)};
-    else if(mCp) last={type:"cp", value:parseInt(mCp[1],10)};
-
-    if(line.startsWith("bestmove")){
-      engine.onmessage=baseOnMsg;
-      if(mySeq===engineSeq){
-        engScore.textContent=fmtScore(last);
-        setEngineStatus("bereit");
-      }
-      engineBusy=false;
-    }
-  };
-
-  engine.onmessage=(e)=>{ baseOnMsg && baseOnMsg(e); handler(e); };
 
   engine.postMessage("ucinewgame");
   engine.postMessage(`position fen ${fen}`);
@@ -319,20 +338,22 @@ function computeLegal(i){
 
 /* ===== UI Moves ===== */
 function renderMoves(){
- movesEl.innerHTML="";
+ movesEl.replaceChildren();
+ const fragment=document.createDocumentFragment();
  for(let k=0;k<moves.length;k++){
   const li=document.createElement("li");
   li.textContent=moves[k];
   if(replay && replay.ply===k+1){
-    li.style.fontWeight="800";
+    li.classList.add("current-ply");
   }
-  movesEl.appendChild(li);
+  fragment.appendChild(li);
  }
+ movesEl.appendChild(fragment);
 }
 
 /* ===== Render Board ===== */
 function render(){
- boardEl.innerHTML="";
+ const fragment=document.createDocumentFragment();
  for(let i=0;i<64;i++){
   const d=document.createElement("div");
   d.className=`sq ${sqColor(i)}`;
@@ -362,8 +383,9 @@ function render(){
    p.textContent=P[state[i]];
    d.appendChild(p);
   }
-  boardEl.appendChild(d);
+  fragment.appendChild(d);
  }
+ boardEl.replaceChildren(fragment);
 }
 
 /* ===== Klick (Edit-Modus) ===== */
@@ -690,8 +712,12 @@ pgnBtn.onclick=()=>downloadText("game.pgn", buildPGN());
 pgnFile.onchange=async(e)=>{
   const f=e.target.files && e.target.files[0];
   if(!f) return;
-  const text=await f.text();
-  enterReplay(text);
+  try{
+    const text=await f.text();
+    enterReplay(text);
+  }finally{
+    e.target.value="";
+  }
 };
 rFirst.onclick=()=>gotoPly(0);
 rPrev.onclick=()=>gotoPly((replay?replay.ply:0)-1);
@@ -726,6 +752,11 @@ engToggle.onclick=()=>{
     }, 150);
   }else{
     engineEnabled=false;
+    engineSeq++;
+    enginePendingEval=false;
+    if(engineBusy && engine){
+      engine.postMessage("stop");
+    }
     engToggle.textContent="Engine: AUS";
     engScore.textContent="–";
     if(engineReadyPoll){

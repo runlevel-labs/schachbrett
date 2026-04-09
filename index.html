@@ -1,25 +1,26 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
 <title>Schachbrett</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#edf1f6">
 
 <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
-<div id="board"></div>
+<div id="board" aria-label="Schachbrett" role="grid"></div>
 
 <div class="bar">
   <h3>Schachbrett</h3>
 
-  <button id="reset" class="btn">Startaufstellung</button>
-  <button id="clear" class="btn">Leeren</button>
-  <button id="undo" class="btn" disabled>Undo</button>
-  <button id="clearmoves" class="btn">Züge löschen</button>
-  <button id="pgn" class="btn">PGN export</button>
+  <button id="reset" class="btn" type="button">Startaufstellung</button>
+  <button id="clear" class="btn" type="button">Leeren</button>
+  <button id="undo" class="btn" type="button" disabled>Undo</button>
+  <button id="clearmoves" class="btn" type="button">Züge löschen</button>
+  <button id="pgn" class="btn" type="button">PGN export</button>
 
   <hr>
 
@@ -27,12 +28,12 @@
     <div class="pill">Replay (PGN mit Koordinaten-Kommentaren)</div>
     <div class="replay">
       <input id="pgnfile" type="file" accept=".pgn" />
-      <button id="rFirst" class="btn" disabled>⏮</button>
-      <button id="rPrev" class="btn" disabled>◀</button>
-      <button id="rNext" class="btn" disabled>▶</button>
-      <button id="rLast" class="btn" disabled>⏭</button>
-      <button id="rAuto" class="btn" disabled>⏵ Auto</button>
-      <span id="rPos" class="pill">0 / 0</span>
+      <button id="rFirst" class="btn" type="button" disabled>⏮</button>
+      <button id="rPrev" class="btn" type="button" disabled>◀</button>
+      <button id="rNext" class="btn" type="button" disabled>▶</button>
+      <button id="rLast" class="btn" type="button" disabled>⏭</button>
+      <button id="rAuto" class="btn" type="button" disabled>⏵ Auto</button>
+      <span id="rPos" class="pill" aria-live="polite">0 / 0</span>
     </div>
     <small>
       Empfehlung: Export mit <b>{E2-E4}</b> Kommentaren → Import/Rekonstruktion ist 1:1 stabil.
@@ -44,9 +45,9 @@
   <div>
     <div class="pill">Engine (Live-Bewertung)</div>
     <div class="replay">
-      <button id="engToggle" class="btn">Engine: AUS</button>
-      <span id="engScore" class="pill">–</span>
-      <span id="engState" class="pill">bereit</span>
+      <button id="engToggle" class="btn" type="button">Engine: AUS</button>
+      <span id="engScore" class="pill" aria-live="polite">–</span>
+      <span id="engState" class="pill" aria-live="polite">bereit</span>
     </div>
     <small>
       Erwartet eine Datei <b>stockfish.js</b> im gleichen Ordner (WebWorker).
@@ -56,10 +57,10 @@
 
   <hr>
 
-  <div id="status">Feld: –</div>
+  <div id="status" aria-live="polite">Feld: –</div>
 
   <strong>Züge:</strong>
-  <ol id="moves"></ol>
+  <ol id="moves" aria-live="polite"></ol>
 
   <small>
     Klick-Klick: Figur auswählen, Zielfeld anklicken.<br>
@@ -78,8 +79,8 @@
     <span id="btime">2:00:00</span>
   </div>
 
-  <button id="clockToggle" class="btn primary">Start</button>
-  <button id="clockReset" class="btn">Uhr zurücksetzen</button>
+  <button id="clockToggle" class="btn primary" type="button">Start</button>
+  <button id="clockReset" class="btn" type="button">Uhr zurücksetzen</button>
 
   <small>
     Am Zug: <b id="turn">Weiß</b><br>
