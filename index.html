@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
@@ -11,83 +11,122 @@
 
 <body>
 
-<div id="board" aria-label="Schachbrett" role="grid"></div>
-
-<div class="bar">
-  <h3>Schachbrett</h3>
-
-  <button id="reset" class="btn" type="button">Startaufstellung</button>
-  <button id="clear" class="btn" type="button">Leeren</button>
-  <button id="undo" class="btn" type="button" disabled>Undo</button>
-  <button id="clearmoves" class="btn" type="button">Züge löschen</button>
-  <button id="pgn" class="btn" type="button">PGN export</button>
-
-  <hr>
-
-  <div>
-    <div class="pill">Replay (PGN mit Koordinaten-Kommentaren)</div>
-    <div class="replay">
-      <input id="pgnfile" type="file" accept=".pgn" />
-      <button id="rFirst" class="btn" type="button" disabled>⏮</button>
-      <button id="rPrev" class="btn" type="button" disabled>◀</button>
-      <button id="rNext" class="btn" type="button" disabled>▶</button>
-      <button id="rLast" class="btn" type="button" disabled>⏭</button>
+<main class="workspace">
+  <div class="board-area">
+    <div id="board" aria-label="Schachbrett" role="grid"></div>
+    <section id="setupPanel" aria-labelledby="setupTitle" hidden>
+      <h2 id="setupTitle">Schachaufgabe aufbauen</h2>
+      <p>Figur wählen und ein Feld anklicken. Mit „Entfernen“ löschst du einzelne Figuren.</p>
+      <div id="setupPieces"></div>
+      <div class="actions setup-actions">
+        <button id="setupErase" class="btn" type="button" aria-pressed="false">Entfernen</button>
+        <label for="setupTurn">Am Zug</label>
+        <select id="setupTurn">
+          <option value="w">Weiß</option>
+          <option value="b">Schwarz</option>
+        </select>
+      </div>
+      <p id="setupError" role="alert"></p>
+      <div class="actions setup-actions">
+        <button id="setupApply" class="btn primary" type="button">Stellung übernehmen</button>
+        <button id="setupCancel" class="btn" type="button">Abbrechen</button>
+      </div>
+    </section>
+    <div id="replayControls" class="replay-controls" role="group" aria-label="PGN-Wiedergabe" hidden>
+      <button id="rFirst" class="btn" type="button" aria-label="Zur Startstellung" title="Zur Startstellung" disabled>⏮</button>
+      <button id="rPrev" class="btn" type="button" aria-label="Vorheriger Zug" title="Vorheriger Zug" disabled>◀</button>
+      <button id="rNext" class="btn" type="button" aria-label="Nächster Zug" title="Nächster Zug" disabled>▶</button>
+      <button id="rLast" class="btn" type="button" aria-label="Zum Partieende" title="Zum Partieende" disabled>⏭</button>
       <button id="rAuto" class="btn" type="button" disabled>⏵ Auto</button>
-      <span id="rPos" class="pill" aria-live="polite">0 / 0</span>
+      <span id="rPos" class="replay-count" aria-live="polite">0 / 0</span>
     </div>
-    <small>
-      Empfehlung: Export mit <b>{E2-E4}</b> Kommentaren → Import/Rekonstruktion ist 1:1 stabil.
-    </small>
-  </div>
-
-  <hr>
-
-  <div>
-    <div class="pill">Engine (Live-Bewertung)</div>
-    <div class="replay">
-      <button id="engToggle" class="btn" type="button">Engine: AUS</button>
-      <span id="engScore" class="pill" aria-live="polite">–</span>
-      <span id="engState" class="pill" aria-live="polite">bereit</span>
+    <div id="trainingControls" class="replay-controls" role="group" aria-label="Aufgabensteuerung" hidden>
+      <button id="trainingRestart" class="btn" type="button">Nochmal versuchen</button>
+      <button id="trainingReveal" class="btn" type="button">Lösung anzeigen</button>
     </div>
-    <small>
-      Erwartet eine Datei <b>stockfish.js</b> im gleichen Ordner (WebWorker).
-      Ohne die Datei bleibt die Engine aus.
-    </small>
   </div>
 
-  <hr>
+  <aside class="bar" aria-labelledby="panel-title">
+    <header class="panel-header">
+      <h1 id="panel-title">Schachbrett</h1>
+      <button id="undo" class="btn" type="button" disabled>Rückgängig</button>
+    </header>
 
-  <div id="status" aria-live="polite">Feld: –</div>
+    <div class="position-line">
+      <div id="status" aria-live="polite">Weiß am Zug.</div>
+      <span class="move-number">Zug <b id="moveno">1</b></span>
+    </div>
 
-  <strong>Züge:</strong>
-  <ol id="moves" aria-live="polite"></ol>
+    <div class="clocks" aria-label="Schachuhr" role="group">
+      <div class="clockrow" aria-current="true"><span>Weiß</span><b id="wtime">2:00:00</b></div>
+      <div class="clockrow" aria-current="false"><span>Schwarz</span><b id="btime">2:00:00</b></div>
+    </div>
+    <div class="actions clock-actions">
+      <button id="clockToggle" class="btn primary" type="button">Uhr starten</button>
+      <button id="clockReset" class="btn" type="button">Uhr zurücksetzen</button>
+    </div>
 
-  <small>
-    Klick-Klick: Figur auswählen, Zielfeld anklicken.<br>
-    Einfache Zugregeln (keine Schach-/Mattprüfung).<br>
-    Notation: <b>SAN + Koordinaten</b>.
-  </small>
+    <section id="movePanel" class="panel-section" aria-labelledby="moves-title">
+      <div class="section-header">
+        <h2 id="moves-title">Züge</h2>
+        <button id="clearmoves" class="btn quiet" type="button" disabled>Liste leeren</button>
+      </div>
+      <p id="emptyMoves">Noch keine Züge</p>
+      <ol id="moves" aria-labelledby="moves-title" role="list" hidden></ol>
+    </section>
 
-  <hr>
+    <div class="panel-section">
+      <div class="actions">
+        <div class="actions" role="group" aria-label="PGN-Datei">
+          <button id="pgnLoad" class="btn" type="button">PGN laden</button>
+          <input id="pgnfile" type="file" accept=".pgn" aria-label="PGN-Datei laden" hidden />
+          <button id="pgn" class="btn" type="button" aria-label="PGN exportieren">Exportieren</button>
+        </div>
+        <div class="actions" role="group" aria-label="Stellungsbewertung">
+          <button id="engToggle" class="btn" type="button" aria-pressed="false">Engine: AUS</button>
+          <span id="engScore" class="pill" aria-live="polite">–</span>
+          <span id="engState" aria-live="polite" hidden>aus</span>
+        </div>
+        <button id="trainingToggle" class="btn" type="button" aria-pressed="false">Aufgabenmodus</button>
+      </div>
+      <div id="pgnCollection" class="actions collection-actions" role="group" aria-label="PGN-Sammlung" hidden>
+        <button id="pgnPrevious" class="btn" type="button" aria-label="Vorherige Partie">‹</button>
+        <form id="pgnJump" class="actions">
+          <label for="pgnNumber">Partie</label>
+          <input id="pgnNumber" type="number" min="1" step="1" required aria-describedby="pgnCount">
+          <span id="pgnCount"></span>
+          <button class="btn" type="submit">Öffnen</button>
+        </form>
+        <button id="pgnNext" class="btn" type="button" aria-label="Nächste Partie">›</button>
+      </div>
+      <p id="pgnError" role="alert"></p>
+    </div>
 
-  <div class="clockrow">
-    <span>⏱ Weiß</span>
-    <span id="wtime">2:00:00</span>
-  </div>
-  <div class="clockrow">
-    <span>⏱ Schwarz</span>
-    <span id="btime">2:00:00</span>
-  </div>
+    <details id="boardActions" class="panel-section board-actions">
+      <summary>Brettaktionen</summary>
+      <div class="actions">
+        <button id="reset" class="btn" type="button">Startaufstellung</button>
+        <button id="clear" class="btn" type="button">Brett leeren</button>
+      </div>
+    </details>
+  </aside>
+</main>
 
-  <button id="clockToggle" class="btn primary" type="button">Start</button>
-  <button id="clockReset" class="btn" type="button">Uhr zurücksetzen</button>
 
-  <small>
-    Am Zug: <b id="turn">Weiß</b><br>
-    Zug: <b id="moveno">1</b> / 40
-  </small>
-</div>
+<dialog id="promotion" aria-labelledby="promotion-title">
+  <form>
+    <h2 id="promotion-title">Bauernumwandlung</h2>
+    <div class="promotion-options">
+      <button class="btn" type="submit" value="q" autofocus>Dame</button>
+      <button class="btn" type="submit" value="r">Turm</button>
+      <button class="btn" type="submit" value="b">Läufer</button>
+      <button class="btn" type="submit" value="n">Springer</button>
+    </div>
+    <button class="btn" type="submit" value="">Abbrechen</button>
+  </form>
+</dialog>
 
+<script src="vendor/chess.js"></script>
 <script src="main.js"></script>
 
 </body>

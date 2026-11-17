@@ -1,0 +1,11 @@
+[Event "Damenendspiel - Matt in 2"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Weiß"]
+[Black "Schwarz"]
+[Result "0-1"]
+[SetUp "1"]
+[FEN "K7/3k3q/8/8/8/8/8/8 b - - 0 1"]
+
+1... Kc6 2. Kb8 Qb7# 0-1
